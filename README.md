@@ -1,82 +1,52 @@
-# Yelp Restaurant Recommender using Probabilistic Graphical Models
+# BitePoint — Yelp Restaurant Recommender
 
-## Project Overview
-This project implements a probabilistic graphical model-based restaurant recommendation system using Yelp data. The model jointly models user preferences, restaurant features, and ratings to make personalized recommendations.
+CS179: Introduction to Graphical Models — Final Project
 
-## Project Structure
+## Overview
+
+Two collaborative filtering models trained on the Yelp Open Dataset to predict user restaurant ratings:
+
+- **Matrix Factorization** — SGD baseline with user/business bias terms
+- **Bayesian Latent Factor Model** — mean-field variational inference with Gaussian priors, trained by maximizing the ELBO
+
+## Structure
+
 ```
 BitePoint/
 ├── src/
-│   ├── __init__.py
-│   ├── config.py           # Configuration parameters
-│   ├── data_loader.py      # Load and preprocess Yelp data
-│   ├── model.py            # Probabilistic graphical model implementation
-│   ├── evaluation.py       # Metrics and evaluation functions
-│   └── main.py             # Entry point for training and inference
+│   ├── config.py        # hyperparameters and paths
+│   ├── data_loader.py   # load and preprocess Yelp data
+│   ├── model.py         # MF and Bayesian VI models
+│   ├── evaluation.py    # MAE, RMSE, correlation, accuracy
+│   └── main.py          # train and evaluate
 ├── data/
-│   ├── raw/                # Original Yelp data
-│   └── processed/          # Processed data for the model
-├── notebooks/
-│   └── exploration.ipynb   # EDA and data exploration
+│   ├── raw/             # Yelp JSON files
+│   └── processed/       # train.csv, test.csv, mappings.pkl
 ├── results/
-│   ├── models/             # Trained model files
-│   ├── predictions/        # Model predictions
-│   └── plots/              # Evaluation plots
-├── report/
-│   └── project_report.pdf  # Final 4-page report
-├── requirements.txt        # Python dependencies
-└── README.md              # This file
+│   ├── models/          # saved results JSON
+│   └── figures/         # evaluation plots
+└── requirements.txt
 ```
 
-## Key Components
+## Setup
 
-### 1. Data (Yelp Dataset)
-- User data (user IDs, review counts, ratings)
-- Business/Restaurant data (categories, ratings, location)
-- Review data (ratings, text, helpful votes)
-- Consider downloading from: https://www.yelp.com/dataset
-
-### 2. Probabilistic Graphical Model
-Potential approaches:
-- **Latent Factor Model**: Model user preferences and restaurant attributes as latent variables
-- **Bayesian Network**: Model dependencies between user type, restaurant features, and ratings
-- **Markov Random Field**: Model interactions between users and restaurants
-- **Topic Model**: Extract review topics and model how they influence ratings
-
-### 3. Evaluation Metrics
-- **Prediction Accuracy**: MAE/RMSE on held-out ratings
-- **Ranking Metrics**: NDCG, MRR, Precision@K
-- **Coverage**: Percentage of restaurants/users covered
-- **Performance vs. Data Size**: How accuracy improves with training data
-- **Performance vs. Model Complexity**: Trade-offs in model parameters
-
-## Getting Started
-
-### Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### Data Preparation
-1. Download Yelp dataset from https://www.yelp.com/dataset
-2. Place in `data/raw/`
-3. Run preprocessing: `python src/data_loader.py`
+Place Yelp dataset JSON files (`review.json`, `user.json`, `business.json`) in `data/raw/`.
 
-### Run the Project
+## Running
+
+Set `MODEL = 'mf'` or `MODEL = 'bayesian'` at the top of `src/main.py`, then:
+
 ```bash
-python src/main.py --model [model_type] --epochs 100 --batch_size 32
+python src/main.py
 ```
 
-### Generate Report
-See `notebooks/exploration.ipynb` and results in `results/` for evaluation plots.
+Processed data is cached to `data/processed/` on first run.
 
-## Team Members
-- [Member 1]
-- [Member 2]
-- [Member 3]
+## Team
 
-## References
-- Yelp Dataset: https://www.yelp.com/dataset
-- Pyro: https://pyro.ai/
-- Stan: https://mc-stan.org/
-- Relevant papers: [Add your references]
+- Anthony Suh
+- [teammate]
