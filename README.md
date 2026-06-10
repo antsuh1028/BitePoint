@@ -49,4 +49,5 @@ Processed data is cached to `data/processed/` on first run.
 ## Team
 
 - Anthony Suh
-- [teammate]
+- Alex Yin
+- Angelina Wang
