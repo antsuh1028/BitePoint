@@ -1,8 +1,3 @@
-"""
-Generate evaluation plots for the report.
-Produces figures in results/figures/ for both MF and Bayesian VI models.
-"""
-
 import numpy as np
 import pandas as pd
 import pickle
@@ -15,12 +10,13 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 from config import PROCESSED_DATA_DIR, MODELS_DIR, RESULTS_DIR
 
-FIGURES_DIR     = Path(RESULTS_DIR) / 'figures'
-MF_FIG_DIR      = FIGURES_DIR / 'mf'
-BAY_FIG_DIR     = FIGURES_DIR / 'bayesian'
-CMP_FIG_DIR     = FIGURES_DIR / 'comparison'
+FIGURES_DIR = Path(RESULTS_DIR) / 'figures'
+MF_FIG_DIR  = FIGURES_DIR / 'mf'
+BAY_FIG_DIR = FIGURES_DIR / 'bayesian'
+CMP_FIG_DIR = FIGURES_DIR / 'comparison'
 for d in [MF_FIG_DIR, BAY_FIG_DIR, CMP_FIG_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
 MF_CKPT_DIR  = Path(MODELS_DIR) / 'mf_checkpoints'
 BAY_CKPT_DIR = Path(MODELS_DIR) / 'bayesian_checkpoints'
 
@@ -32,14 +28,33 @@ plt.rcParams.update({
 MF_EPOCHS  = [10, 20, 30, 40, 50]
 BAY_EPOCHS = [5, 10, 15, 20]
 
-# Consistent model colours used across every figure
 MF_COLOR  = 'steelblue'
 BAY_COLOR = 'darkorange'
 MF_LABEL  = 'Matrix Factorization (MF)'
 BAY_LABEL = 'Bayesian VI'
 
+_SUBFOLDER_MAP = {
+    'rating_skew':            FIGURES_DIR,
+    'training_curves':        MF_FIG_DIR,
+    'loss_curve':             MF_FIG_DIR,
+    'checkpoint_metrics':     MF_FIG_DIR,
+    'error_distribution':     MF_FIG_DIR,
+    'train_test_comparison':  MF_FIG_DIR,
+    'bayesian_elbo_curve':    BAY_FIG_DIR,
+    'uncertainty_vs_reviews': BAY_FIG_DIR,
+    'model_comparison':       CMP_FIG_DIR,
+    'error_comparison':       CMP_FIG_DIR,
+    'rating_distributions':   CMP_FIG_DIR,
+}
 
-# ── data helpers ─────────────────────────────────────────────────────────────
+
+def _save(fig, name):
+    stem = name.replace('.png', '')
+    out = _SUBFOLDER_MAP.get(stem, FIGURES_DIR) / name
+    fig.savefig(out, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f'Saved: {out}')
+
 
 def load_data():
     train_df = pd.read_csv(Path(PROCESSED_DATA_DIR) / 'train.csv')
@@ -57,28 +72,36 @@ def mf_predict(ckpt_path, user_idx, business_idx):
 def bay_predict(ckpt_path, user_idx, business_idx):
     import torch
     sd = torch.load(ckpt_path, map_location='cpu', weights_only=True)['state_dict']
-    u_loc  = sd['user_loc'].numpy()
-    b_loc  = sd['business_loc'].numpy()
-    u_bias = sd['user_bias'].numpy()
-    b_bias = sd['business_bias'].numpy()
-    g_bias = sd['global_bias'].numpy()
-    pred = (u_loc[user_idx] * b_loc[business_idx]).sum(1)
-    pred += u_bias[user_idx] + b_bias[business_idx] + float(g_bias)
+    pred = (sd['user_loc'].numpy()[user_idx] * sd['business_loc'].numpy()[business_idx]).sum(1)
+    pred += sd['user_bias'].numpy()[user_idx] + sd['business_bias'].numpy()[business_idx] + float(sd['global_bias'].numpy())
     return np.clip(pred, 1, 5)
 
 
 def bay_uncertainty(ckpt_path, user_idx):
-    """Return per-user posterior std (mean across latent dims)."""
     import torch
-    import torch.nn.functional as F
     sd = torch.load(ckpt_path, map_location='cpu', weights_only=True)['state_dict']
-    u_scale = sd['user_scale'].numpy()
-    # softplus to get actual std
-    std = np.log1p(np.exp(u_scale))   # softplus
+    std = np.log1p(np.exp(sd['user_scale'].numpy()))
     return std[user_idx].mean(axis=1)
 
 
-# ── figure 1: training curves side by side (MF loss | Bayesian ELBO) ─────────
+def plot_rating_skew(train_df):
+    counts = train_df['stars'].value_counts().sort_index()
+    pct    = counts / counts.sum() * 100
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    bars = ax.bar(counts.index.astype(int), pct.values, color='steelblue', alpha=0.85, edgecolor='white', linewidth=0.5)
+    for bar, p in zip(bars, pct.values):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.4,
+                f'{p:.1f}%', ha='center', va='bottom', fontsize=10)
+    ax.set_xticks([1, 2, 3, 4, 5])
+    ax.set_xlabel('Star Rating')
+    ax.set_ylabel('Share of Reviews (%)')
+    five_star_pct = pct.loc[5.0] if 5.0 in pct.index else pct.iloc[-1]
+    ax.set_title(f'Yelp Rating Distribution\n{five_star_pct:.1f}% of reviews are 5 stars')
+    ax.set_ylim(0, pct.max() * 1.15)
+    fig.tight_layout()
+    _save(fig, 'rating_skew.png')
+
 
 def plot_training_curves():
     import torch
@@ -96,7 +119,6 @@ def plot_training_curves():
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-    # Left — MF
     ax = axes[0]
     ax.plot(mf_epochs, mf_losses, linewidth=2, color=MF_COLOR, label=MF_LABEL)
     for ep in MF_EPOCHS:
@@ -106,7 +128,6 @@ def plot_training_curves():
     ax.set_title(f'{MF_LABEL}\nTraining Loss')
     ax.legend(fontsize=9)
 
-    # Right — Bayesian
     ax = axes[1]
     if bay_losses:
         ax.plot(bay_ep, bay_losses, 'o-', linewidth=2, color=BAY_COLOR, label=BAY_LABEL)
@@ -120,8 +141,6 @@ def plot_training_curves():
     _save(fig, 'training_curves.png')
 
 
-# ── figure 3: MF vs Bayesian — model comparison bar chart ────────────────────
-
 def plot_model_comparison():
     mf_path  = Path(MODELS_DIR) / 'mf_results.json'
     bay_path = Path(MODELS_DIR) / 'bayesian_results.json'
@@ -134,7 +153,6 @@ def plot_model_comparison():
 
     metrics = ['mae', 'rmse', 'correlation', 'classification_accuracy']
     labels  = ['MAE ↓', 'RMSE ↓', 'Correlation ↑', 'Class. Acc. ↑']
-
     mf_test  = [mf['test_metrics'][m]  for m in metrics]
     bay_test = [bay['test_metrics'][m] for m in metrics]
 
@@ -157,30 +175,24 @@ def plot_model_comparison():
     _save(fig, 'model_comparison.png')
 
 
-# ── figure 4: posterior uncertainty vs review count ──────────────────────────
-
 def plot_uncertainty_vs_reviews(train_df, test_df):
     ckpt = BAY_CKPT_DIR / 'bayesian_epoch0020.pt'
     if not ckpt.exists():
         print('Bayesian checkpoint not found, skipping uncertainty plot.')
         return
 
-    # Review count per user from training data
     review_counts = train_df.groupby('user_idx').size().reset_index(name='n_reviews')
 
-    # Sample test users (avoid OOM on full 809K)
     rng = np.random.default_rng(42)
     sample_idx = rng.choice(len(test_df), size=min(20000, len(test_df)), replace=False)
-    sample_df = test_df.iloc[sample_idx]
+    sample_df  = test_df.iloc[sample_idx]
+    u_idx      = sample_df['user_idx'].values
 
-    u_idx = sample_df['user_idx'].values
     uncertainty = bay_uncertainty(ckpt, u_idx)
-
     merged = pd.DataFrame({'user_idx': u_idx, 'uncertainty': uncertainty})
     merged = merged.merge(review_counts, on='user_idx', how='left').dropna()
 
-    # Bin by review count
-    bins  = [0, 5, 10, 20, 50, 100, 500, 9999]
+    bins   = [0, 5, 10, 20, 50, 100, 500, 9999]
     labels = ['1-5', '6-10', '11-20', '21-50', '51-100', '101-500', '500+']
     merged['bin'] = pd.cut(merged['n_reviews'], bins=bins, labels=labels)
     grouped = merged.groupby('bin', observed=True)['uncertainty'].mean()
@@ -196,8 +208,6 @@ def plot_uncertainty_vs_reviews(train_df, test_df):
     _save(fig, 'uncertainty_vs_reviews.png')
 
 
-# ── figure 5: error distributions — MF vs Bayesian ───────────────────────────
-
 def plot_error_comparison(y_true, mf_pred, bay_pred):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
 
@@ -208,7 +218,7 @@ def plot_error_comparison(y_true, mf_pred, bay_pred):
         [MF_COLOR, BAY_COLOR],
     ):
         errors = pred - y_true
-        mae = np.mean(np.abs(errors))
+        mae  = np.mean(np.abs(errors))
         rmse = np.sqrt(np.mean(errors**2))
         ax.hist(errors, bins=60, color=color, alpha=0.8, density=True, edgecolor='white', lw=0.3)
         ax.axvline(0,    color='black', linestyle='--', linewidth=1)
@@ -223,8 +233,6 @@ def plot_error_comparison(y_true, mf_pred, bay_pred):
     fig.tight_layout()
     _save(fig, 'error_comparison.png')
 
-
-# ── figure 6: actual vs predicted distributions (Bayesian) ───────────────────
 
 def plot_rating_distributions(y_true, mf_pred, bay_pred):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4))
@@ -248,32 +256,6 @@ def plot_rating_distributions(y_true, mf_pred, bay_pred):
     _save(fig, 'rating_distributions.png')
 
 
-# ── helper ────────────────────────────────────────────────────────────────────
-
-_SUBFOLDER_MAP = {
-    'training_curves':       MF_FIG_DIR,   # combined → mf/
-    'loss_curve':            MF_FIG_DIR,
-    'checkpoint_metrics':    MF_FIG_DIR,
-    'error_distribution':    MF_FIG_DIR,
-    'train_test_comparison': MF_FIG_DIR,
-    'bayesian_elbo_curve':   BAY_FIG_DIR,
-    'uncertainty_vs_reviews': BAY_FIG_DIR,
-    'model_comparison':      CMP_FIG_DIR,
-    'error_comparison':      CMP_FIG_DIR,
-    'rating_distributions':  CMP_FIG_DIR,
-}
-
-def _save(fig, name):
-    stem = name.replace('.png', '')
-    folder = _SUBFOLDER_MAP.get(stem, FIGURES_DIR)
-    out = folder / name
-    fig.savefig(out, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f'Saved: {out}')
-
-
-# ── main ──────────────────────────────────────────────────────────────────────
-
 if __name__ == '__main__':
     print('Loading data...')
     train_df, test_df = load_data()
@@ -289,6 +271,7 @@ if __name__ == '__main__':
     bay_pred = bay_predict(BAY_CKPT_DIR / 'bayesian_epoch0020.pt', user_idx, business_idx)
 
     print('\nGenerating figures...')
+    plot_rating_skew(train_df)
     plot_training_curves()
     plot_model_comparison()
     plot_uncertainty_vs_reviews(train_df, test_df)
