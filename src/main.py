@@ -13,7 +13,7 @@ from pathlib import Path
 import pickle
 import sys
 
-from data_loader import load_and_prepare_data
+from data_loader import load_and_prepare_data, load_processed_data
 from model import SimpleMatrixFactorization, LatentFactorModel, VariationalInference
 from evaluation import evaluate_model, ablation_study
 from config import MODEL_CONFIG, PROCESSED_DATA_DIR, MODELS_DIR, RANDOM_SEED
@@ -43,8 +43,8 @@ def main(args):
     
     # Load data
     print("\n[1] Loading and preparing data...")
-    data = load_and_prepare_data()
-    
+    data = load_processed_data() or load_and_prepare_data()
+
     if data is None:
         print("Failed to load data. Exiting.")
         return
@@ -84,7 +84,9 @@ def main(args):
         model.train(
             train_user_idx, train_business_idx, train_ratings,
             num_epochs=args.epochs,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            checkpoint_every=args.checkpoint_every,
+            checkpoint_dir=str(Path(MODELS_DIR) / f'{args.model}_checkpoints'),
         )
         
         # Make predictions
@@ -102,7 +104,8 @@ def main(args):
         torch_model = LatentFactorModel(
             num_users=num_users,
             num_businesses=num_businesses,
-            latent_dim=args.latent_dim
+            latent_dim=args.latent_dim,
+            global_bias=float(train_ratings.mean()),
         )
         
         vi = VariationalInference(
@@ -110,25 +113,23 @@ def main(args):
             learning_rate=args.learning_rate,
             num_epochs=args.epochs
         )
-        
-        # Create data loaders
-        train_loader = create_data_loader(train_df, batch_size=args.batch_size)
-        
-        # Convert to torch tensors
-        train_user_idx_torch = torch.from_numpy(train_user_idx).long()
-        train_business_idx_torch = torch.from_numpy(train_business_idx).long()
-        train_ratings_torch = torch.from_numpy(train_ratings).float()
-        
-        # Train
+
+        # Train with mini-batch SVI
         vi.train(
-            [(train_user_idx_torch, train_business_idx_torch, train_ratings_torch)]
+            train_user_idx, train_business_idx, train_ratings,
+            num_epochs=args.epochs,
+            batch_size=args.batch_size,
+            checkpoint_every=args.checkpoint_every,
+            checkpoint_dir=str(Path(MODELS_DIR) / f'{args.model}_checkpoints'),
         )
-        
+
         # Make predictions
         print("\n[3] Making predictions...")
         test_user_idx_torch = torch.from_numpy(test_user_idx).long()
         test_business_idx_torch = torch.from_numpy(test_business_idx).long()
-        
+        train_user_idx_torch = torch.from_numpy(train_user_idx).long()
+        train_business_idx_torch = torch.from_numpy(train_business_idx).long()
+
         train_pred = vi.predict(train_user_idx_torch, train_business_idx_torch)
         test_pred = vi.predict(test_user_idx_torch, test_business_idx_torch)
     
@@ -224,6 +225,12 @@ if __name__ == '__main__':
         default=MODEL_CONFIG['regularization'],
         help='L2 regularization coefficient'
     )
-    
+    parser.add_argument(
+        '--checkpoint_every',
+        type=int,
+        default=10,
+        help='Save a checkpoint and print progress report every N epochs (0 to disable)'
+    )
+
     args = parser.parse_args()
     main(args)

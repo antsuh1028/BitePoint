@@ -30,7 +30,7 @@ def load_yelp_json(filename: str) -> pd.DataFrame:
         raise FileNotFoundError(f"File not found: {filepath}")
     
     data = []
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         for line in f:
             data.append(json.loads(line))
     
@@ -173,6 +173,37 @@ def split_train_test(
     test_df = shuffled.iloc[split_idx:].reset_index(drop=True)
     
     return train_df, test_df
+
+
+def load_processed_data():
+    """
+    Load already-processed train/test CSVs and mappings if they exist.
+
+    Returns:
+        Dictionary with processed data and metadata, or None if files are missing.
+    """
+    train_path = os.path.join(PROCESSED_DATA_DIR, 'train.csv')
+    test_path = os.path.join(PROCESSED_DATA_DIR, 'test.csv')
+    mappings_path = os.path.join(PROCESSED_DATA_DIR, 'mappings.pkl')
+
+    if not all(os.path.exists(p) for p in [train_path, test_path, mappings_path]):
+        return None
+
+    print("Loading processed data from disk...")
+    import pickle
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
+    with open(mappings_path, 'rb') as f:
+        mappings = pickle.load(f)
+
+    print(f"  Train: {len(train_df)}, Test: {len(test_df)}")
+    return {
+        'train': train_df,
+        'test': test_df,
+        'users': None,
+        'businesses': None,
+        'mappings': mappings,
+    }
 
 
 def load_and_prepare_data():

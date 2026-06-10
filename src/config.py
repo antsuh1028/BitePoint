@@ -19,7 +19,7 @@ for directory in [PROCESSED_DATA_DIR, RESULTS_DIR, MODELS_DIR]:
 MODEL_CONFIG = {
     'latent_dim': 20,           # Dimension of latent factors
     'num_epochs': 100,
-    'batch_size': 32,
+    'batch_size': 1024,
     'learning_rate': 0.001,
     'regularization': 0.01,
     'dropout': 0.2,
